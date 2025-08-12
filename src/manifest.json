@@ -13,38 +13,19 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "http://*/*",
-        "https://*/*",
-        "<all_urls>"
-      ],
-      "js": [
-        "contentScript.bundle.js"
-      ],
-      "css": [
-        "content.styles.css"
-      ],
+      "matches": ["http://*/*", "https://*/*", "<all_urls>"],
+      "exclude": ["chrome://*/*"],
+      "js": ["contentScript.bundle.js"],
+      "css": ["content.styles.css"],
       "run_at": "document_start"
     }
   ],
-  "permissions": [
-    "storage",
-    "tabs",
-    "activeTab"
-  ],
-  "host_permissions": [
-    "*://*.google.com/*",
-    "*://*.youtube.com/*"
-  ],
+  "permissions": ["storage", "tabs", "activeTab"],
+  "host_permissions": ["<all_urls>"],
   "web_accessible_resources": [
     {
-      "resources": [
-        "content.styles.css",
-        "icon-128.png",
-        "icon-34.png"
-      ],
+      "resources": ["content.styles.css", "icon-128.png", "icon-34.png"],
       "matches": []
     }
   ]
-  
 }
