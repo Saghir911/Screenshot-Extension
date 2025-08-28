@@ -26,4 +26,9 @@ html {
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  scale: 1;
+}
+.screenshot-button:active {
+  scale: 0.95;
+  transition: all ease 0.3s;
 }

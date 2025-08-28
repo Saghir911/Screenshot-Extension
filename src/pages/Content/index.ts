@@ -1,31 +1,67 @@
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === "convert") {
-    // Display the image on the page
-    if (msg.dataURI) {
-      const img = document.createElement("img");
-      img.src = msg.dataURI;
-      img.style.maxWidth = "300px";
-      img.style.border = "2px solid #333";
-      img.style.display = "block";
-      img.style.margin = "16px auto";
-      document.body.appendChild(img);
-      
-      const blob = dataURItoBlob(msg.dataURI);
-      console.log("image:", blob);
-    }
-    sendResponse({ status: 'done' });
-  }
-  return true;
-});
+// content-script.js
+(async () => {
+  console.log("I am above console");
+  let scrollY = 0;
+  let viewportHeight = window.innerHeight;
 
-// Convert base64 dataURL to Blob
-function dataURItoBlob(dataURI: string): Blob {
-  const byteString = atob(dataURI.split(",")[1]);
-  const mimeString = dataURI.split(",")[0].split(":")[1].split(";")[0];
-  const ab = new ArrayBuffer(byteString.length);
-  const ia = new Uint8Array(ab);
-  for (let i = 0; i < byteString.length; i++) {
-    ia[i] = byteString.charCodeAt(i);
+  function clampScrollY(y: any) {
+    const maxScroll =
+      Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      ) - viewportHeight;
+    return Math.min(y, Math.max(0, maxScroll));
   }
-  return new Blob([ab], { type: mimeString });
-}
+
+  function scrollAndCapture() {
+    const totalHeight = Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight
+    );
+    const maxScroll = Math.max(0, totalHeight - viewportHeight);
+
+    console.log(
+      "[capture] scrollY:",
+      scrollY,
+      "viewport:",
+      viewportHeight,
+      "totalHeight:",
+      totalHeight,
+      "maxScroll:",
+      maxScroll
+    );
+
+    if (scrollY <= maxScroll) {
+      // instant jump to avoid smooth scroll timing problems
+      window.scrollTo(0, scrollY);
+      // give the page time to paint and lazy-load images
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ action: "capture" });
+      }, 800); // raise if needed (1000ms)
+    } else {
+      chrome.runtime.sendMessage({ action: "done" });
+      console.log("✅ Finished capturing full page");
+    }
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.action === "startCapturing") {
+      console.log("I am start caputering console");
+      sendResponse("done")
+      scrollY = 0;
+      viewportHeight = window.innerHeight;
+      window.scrollTo(0, 0);
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ action: "capture" });
+      }, 800);
+    }
+
+    if (msg.action === "scrollNext") {
+      console.log("I am scroll next console");
+      sendResponse("done")
+      viewportHeight = window.innerHeight;
+      scrollY = clampScrollY(scrollY + viewportHeight);
+      scrollAndCapture();
+    }
+  });
+})();

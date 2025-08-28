@@ -1,5 +1,5 @@
 import React from "react";
-import "./Popup.css" // Assuming you have a CSS file for styling
+import "./Popup.css"; // Assuming you have a CSS file for styling
 
 const Popup: React.FC = () => {
   const takeScreenshot = async () => {
@@ -8,10 +8,9 @@ const Popup: React.FC = () => {
       currentWindow: true,
     });
     if (tab.id) {
-      chrome.runtime.sendMessage({ action: "capture", tabId: tab.id });
+      await chrome.tabs.sendMessage(tab.id, { action: "startCapturing" });
     }
   };
-
   return (
     <div className="main">
       <button className="screenshot-button" onClick={takeScreenshot}>
