@@ -1,23 +1,38 @@
 import React from "react";
-import "./Popup.css"; // Assuming you have a CSS file for styling
+import "./Popup.css";
+
 const Popup: React.FC = () => {
   const takeScreenshot = async () => {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (tab.id) {
-       chrome.tabs.sendMessage(
-        tab.id,
-        { action: "startCapturing" },
+    try {
+      const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      const tab = tabs[0];
+      if (!tab?.id) {
+        console.error("No active tab found");
+        return;
+      }
+
+      // Tell background to begin capture for this tab. Background will inject content script if needed.
+      chrome.runtime.sendMessage(
+        { action: "beginCapture", tabId: tab.id },
         (res) => {
-          console.log("resonpse from content ", res);
+          if (chrome.runtime.lastError) {
+            console.error(
+              "beginCapture error:",
+              chrome.runtime.lastError.message
+            );
+          } else {
+            console.log("beginCapture response:", res);
+          }
         }
       );
-      console.log("Id of tab", tab.id);
+    } catch (err) {
+      console.error("takeScreenshot error:", err);
     }
-    return true;
   };
+
   return (
     <div className="main">
       <button className="screenshot-button" onClick={takeScreenshot}>
