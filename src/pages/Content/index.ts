@@ -36,18 +36,21 @@
       window.scrollTo(0, scrollY);
       // give the page time to paint and lazy-load images
       setTimeout(() => {
-        chrome.runtime.sendMessage({ action: "capture" });
+        chrome.runtime.sendMessage({ action: "capture" }, (res) => {
+          console.log("I am id of content script", res);
+        });
       }, 800); // raise if needed (1000ms)
     } else {
       chrome.runtime.sendMessage({ action: "done" });
+      prompt("I am done bro");
       console.log("✅ Finished capturing full page");
     }
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "startCapturing") {
+      sendResponse({ status: "done" });
       console.log("I am start caputering console");
-      sendResponse("done")
       scrollY = 0;
       viewportHeight = window.innerHeight;
       window.scrollTo(0, 0);
@@ -58,7 +61,7 @@
 
     if (msg.action === "scrollNext") {
       console.log("I am scroll next console");
-      sendResponse("done")
+      sendResponse("done");
       viewportHeight = window.innerHeight;
       scrollY = clampScrollY(scrollY + viewportHeight);
       scrollAndCapture();
