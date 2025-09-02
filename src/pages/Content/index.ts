@@ -58,9 +58,7 @@
         // Nothing new to capture -> finish
         isCapturing = false;
         chrome.runtime.sendMessage({ action: "done" }, () => {});
-        // chrome.storage.local.get("screenshotUrls", (result) => {
-        //   console.log("Screenshot Urls:", result.screenshotUrl);
-        // });
+
         console.log(
           "✅ [content] Finished capturing full page (duplicate detected)"
         );
@@ -113,54 +111,56 @@
       sendResponse({ status: "stopped" });
       return true;
     }
+    if (msg.action === "combine") {
+      console.log("these are urls of screenshots", msg.images);
+      console.log(msg.action);
+      const images: string[] = msg.images;
+      if (!images || images.length === 0) return;
 
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      let loadedImages: HTMLImageElement[] = [];
+      let loadCount = 0;
+
+      images.forEach((src: string, index: number) => {
+        const image = new Image();
+        image.src = src;
+
+        image.onload = () => {
+          loadedImages[index] = image;
+          loadCount++;
+
+          if (loadCount === images.length) {
+            const imgWidth = loadedImages[0].naturalWidth;
+            const canvasHeight = loadedImages.reduce(
+              (sum, img) => sum + img.height,
+              0
+            );
+            canvas.width = imgWidth;
+            canvas.height = canvasHeight;
+
+            let yOffset = 0;
+            loadedImages.forEach((img) => {
+              ctx.drawImage(img, 0, yOffset);
+              yOffset += img.height;
+            });
+
+            const finalUrl = canvas.toDataURL("image/png");
+            console.log("final url of images:", finalUrl);
+            chrome.runtime.sendMessage({ action: "OpenPage", finalUrl });
+          }
+        };
+
+        image.onerror = () => {
+          console.warn(`Failed to load image at index ${index}`);
+          loadCount++;
+        };
+      });
+      sendResponse({ status: "combined" });
+      return true;
+    }
     // ignore others
   });
 })();
-
- chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'combine') {
-    const images: string[] = message.images;
-    if (!images || images.length === 0) return;
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let loadedImages: HTMLImageElement[] = [];
-    let loadCount = 0;
-
-    images.forEach((src: string, index: number) => {
-      const image = new Image();
-      image.src = src;
-
-      image.onload = () => {
-        loadedImages[index] = image;
-        loadCount++;
-
-        if (loadCount === images.length) {
-          const imgWidth = loadedImages[0].naturalWidth;
-          const canvasHeight = loadedImages.reduce((sum, img) => sum + img.height, 0);
-          canvas.width = imgWidth;
-          canvas.height = canvasHeight;
-
-          let yOffset = 0;
-          loadedImages.forEach(img => {
-            ctx.drawImage(img, 0, yOffset);
-            yOffset += img.height;
-          });
-
-          const finalUrl = canvas.toDataURL('image/png');
-          chrome.runtime.sendMessage({ action: 'OpenPage', finalUrl });
-        }
-      };
-
-      image.onerror = () => {
-        console.warn(`Failed to load image at index ${index}`);
-        loadCount++;
-      };
-    });
-    sendResponse({status:"combined"})
-  }
-});
-

@@ -1,6 +1,7 @@
 // background.ts (service worker)
 let isCapturing = false;
 let targetTabId: number | null = null;
+let screenshotUrls: string[] = [];
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "beginCapture" && msg.tabId) {
@@ -34,38 +35,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.action === "done") {
     isCapturing = false;
-    targetTabId = null;
 
-    // Get the full array and send it in the response
-    chrome.storage.local.get("screenshotUrls", (result) => {
-      const urls: string[] = Array.isArray(result.screenshotUrls)
-        ? result.screenshotUrls
-        : [];
+    sendResponse({ status: "stopped", screenshots: screenshotUrls });
 
-      // send the "done" message along with the array
-      sendResponse({ status: "stopped", screenshots: urls });
-
-      console.log("✅ [background] Done capturing. Screenshots:", urls);
-      if (targetTabId !== null) {
-        chrome.tabs.sendMessage(
-          targetTabId,
-          { action: "combine", images: urls },
-          (res) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                "[background] combine message not received:",
-                chrome.runtime.lastError.message
-              );
-            }
+    console.log("✅ [background] Done capturing. Screenshots:", screenshotUrls);
+    if (targetTabId !== null) {
+      chrome.tabs.sendMessage(
+        targetTabId,
+        { action: "combine", images: screenshotUrls },
+        (res) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "[background] combine message not received:",
+              chrome.runtime.lastError.message
+            );
           }
-        );
-      }
-    });
+        }
+      );
+      targetTabId = null;
+      screenshotUrls = [];
+    }
 
-    // return true to indicate async sendResponse
     return true;
-  } else if (msg.action === "OpenPage  ") {
-    chrome.tabs.create({ url: msg.finalUrl });
+  } else if (msg.action === "OpenPage") {
+    console.log("final url:", msg.finalUrl);
+    chrome.tabs.create(
+      { url: chrome.runtime.getURL("Screenshot/capture.html") },
+      (tab) => {
+        if (tab.id) {
+          // Send message after a short delay to ensure page is loaded
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tab.id!, {
+              action: "sendUrls",
+              urls: msg.finalUrl,
+            });
+          }, 1000);
+        }
+      }
+    );
     sendResponse({ status: "Page is Opened" });
     return true;
   }
@@ -122,44 +129,35 @@ function captureVisibleAndSend(tabId: number): Promise<void> {
             reject(new Error("No dataUrl returned"));
             return;
           }
-          // Get the existing array from storage (or create a new one)
-          chrome.storage.local.get("screenshotUrls", (result) => {
-            const urls: string[] = Array.isArray(result.screenshotUrls)
-              ? result.screenshotUrls
-              : [];
+          screenshotUrls.push(dataUrl);
 
-            // Append the new screenshot
-            urls.push(dataUrl);
+          // Optionally persist the screenshot
 
-            // Optionally persist the screenshot
-            chrome.storage.local.set({ screenshotUrls: urls }, () => {
-              // send message to the content script to perform the next scroll
-              chrome.tabs.sendMessage(
-                tabId,
-                { action: "scrollNext", dataURI: dataUrl },
-                (res) => {
-                  if (chrome.runtime.lastError) {
-                    // content script disappeared (tab closed / navigated) -> stop capturing
-                    console.error(
-                      "[background] sendMessage(scrollNext) error:",
-                      chrome.runtime.lastError.message
-                    );
-                    isCapturing = false;
-                    targetTabId = null;
-                    reject(chrome.runtime.lastError);
-                    return;
-                  }
+          // send message to the content script to perform the next scroll
+          chrome.tabs.sendMessage(
+            tabId,
+            { action: "scrollNext", dataURI: dataUrl },
+            (res) => {
+              if (chrome.runtime.lastError) {
+                // content script disappeared (tab closed / navigated) -> stop capturing
+                console.error(
+                  "[background] sendMessage(scrollNext) error:",
+                  chrome.runtime.lastError.message
+                );
+                isCapturing = false;
+                targetTabId = null;
+                reject(chrome.runtime.lastError);
+                return;
+              }
 
-                  // If content script told us it's not capturing anymore, flip the flag
-                  if (res && res.status === "not-capturing") {
-                    isCapturing = false;
-                    targetTabId = null;
-                  }
-                  resolve();
-                }
-              );
-            });
-          });
+              // If content script told us it's not capturing anymore, flip the flag
+              if (res && res.status === "not-capturing") {
+                isCapturing = false;
+                targetTabId = null;
+              }
+              resolve();
+            }
+          );
         }
       );
     } catch (err) {
