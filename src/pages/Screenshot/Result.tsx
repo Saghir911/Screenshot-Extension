@@ -1,20 +1,25 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import "./Result.css";
 
-interface ResultProps {
-  imageUrl: string;
-}
+export const Result: React.FC = () => {
+  const [url, setUrl] = useState("");
 
-export const Result: React.FC<ResultProps> = ({ imageUrl }) => {
+  useEffect(() => {
+    chrome.runtime.sendMessage({ action: "getUrl" }, (res) => {
+      if (chrome.runtime.lastError) {
+        console.warn("lastError:", chrome.runtime.lastError.message);
+        return;
+      }
+      const url = res?.url ?? null;
+      if (url) setUrl(url);
+      else console.log("no url yet");
+    });
+  }, []);
   return (
     <div className="result-container">
       <h1>Screenshot Captured</h1>
       <div className="image-container">
-        {imageUrl ? (
-          <img className="screenshot-image" src={imageUrl} alt="Screenshot" />
-        ) : (
-          <p>Loading...</p>
-        )}
+        {url && <img className="screenshot-image" src={url} alt="Screenshot" />}
       </div>
     </div>
   );

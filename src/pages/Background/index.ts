@@ -2,6 +2,7 @@
 let isCapturing = false;
 let targetTabId: number | null = null;
 let screenshotUrls: string[] = [];
+let lastFinalUrl: string | null = null;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "beginCapture" && msg.tabId) {
@@ -59,24 +60,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   } else if (msg.action === "OpenPage") {
     console.log("final url:", msg.finalUrl);
-    chrome.tabs.create(
-      { url: chrome.runtime.getURL("Screenshot/capture.html") },
-      (tab) => {
-        if (tab.id) {
-          // Send message after a short delay to ensure page is loaded
-          setTimeout(() => {
-            chrome.tabs.sendMessage(tab.id!, {
-              action: "sendUrls",
-              urls: msg.finalUrl,
-            });
-          }, 1000);
-        }
-      }
-    );
+    // store it at top-level
+    lastFinalUrl = msg.finalUrl;
+
+    // open the capture page
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("Screenshot/capture.html"),
+    });
+
     sendResponse({ status: "Page is Opened" });
     return true;
   }
-  return false;
+
+  // handle getUrl anywhere inside same listener
+  if (msg.action === "getUrl") {
+    // respond with the stored value
+    sendResponse({ url: lastFinalUrl }); // could be null if not set
+    return true;
+  }
 });
 
 /** Ensure the content script is present and send startCapturing to it. */
