@@ -90,19 +90,19 @@ function startContentScriptAndBegin(tabId: number) {
       );
 
       // Inject and then try again
-      // chrome.scripting.executeScript(
-      //   { target: { tabId }, files: ["content-script.js"] },
-      //   () => {
-      //     // If injection fails for some reason, chrome.runtime.lastError would be set on the next sendMessage too
-      //     chrome.tabs.sendMessage(tabId, { action: "startCapturing" }, (res2) => {
-      //       if (chrome.runtime.lastError) {
-      //         console.error("[background] failed to start after injection:", chrome.runtime.lastError.message);
-      //         isCapturing = false;
-      //         targetTabId = null;
-      //       }
-      //     })
-      //   }
-      // )
+      chrome.scripting.executeScript(
+        { target: { tabId }, files: ["contentScript.bundle.js"] },
+        () => {
+          // If injection fails for some reason, chrome.runtime.lastError would be set on the next sendMessage too
+          chrome.tabs.sendMessage(tabId, { action: "startCapturing" }, (res2) => {
+            if (chrome.runtime.lastError) {
+              console.error("[background] failed to start after injection:", chrome.runtime.lastError.message);
+              isCapturing = false;
+              targetTabId = null;
+            }
+          })
+        }
+      )
     }
   });
 }
