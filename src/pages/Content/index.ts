@@ -1,5 +1,7 @@
 // content-script.ts
 (() => {
+  let remainingHeight: number | any = 0;
+  chrome.runtime.sendMessage({ action: "contentReady" });
   console.log("[content] injected");
   let scrollY = 0;
   let viewportHeight = window.innerHeight;
@@ -116,6 +118,12 @@
       console.log(msg.action);
       const images: string[] = msg.images;
       if (!images || images.length === 0) return;
+      const pageHeight = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      );
+      remainingHeight = pageHeight - viewportHeight * (images.length - 1);
+      console.log(remainingHeight);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
