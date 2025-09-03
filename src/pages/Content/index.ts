@@ -1,7 +1,5 @@
 // content-script.ts
 (() => {
-  let remainingHeight: number | any = 0;
-  chrome.runtime.sendMessage({ action: "contentReady" });
   console.log("[content] injected");
   let scrollY = 0;
   let viewportHeight = window.innerHeight;
@@ -114,22 +112,17 @@
       return true;
     }
     if (msg.action === "combine") {
-      console.log("these are urls of screenshots", msg.images);
-      console.log(msg.action);
       const images: string[] = msg.images;
       if (!images || images.length === 0) return;
-      const pageHeight = Math.max(
-        document.documentElement.scrollHeight,
-        document.body.scrollHeight
-      );
-      remainingHeight = pageHeight - viewportHeight * (images.length - 1);
-      console.log(remainingHeight);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        console.error("Canvas context not available");
+        return;
+      }
 
-      let loadedImages: HTMLImageElement[] = [];
+      let loadedImages: { img: HTMLImageElement; height: number }[] = [];
       let loadCount = 0;
 
       images.forEach((src: string, index: number) => {
@@ -137,27 +130,57 @@
         image.src = src;
 
         image.onload = () => {
-          loadedImages[index] = image;
+          loadedImages[index] = { img: image, height: image.naturalHeight };
           loadCount++;
 
           if (loadCount === images.length) {
-            const imgWidth = loadedImages[0].naturalWidth;
-            const canvasHeight = loadedImages.reduce(
-              (sum, img) => sum + img.height,
-              0
-            );
-            canvas.width = imgWidth;
-            canvas.height = canvasHeight;
+            // Step-driven merge function
+            const stitchScreenshots = () => {
+              const pageHeight = Math.max(
+                document.documentElement.scrollHeight,
+                document.body.scrollHeight
+              );
 
-            let yOffset = 0;
-            loadedImages.forEach((img) => {
-              ctx.drawImage(img, 0, yOffset);
-              yOffset += img.height;
-            });
+              const imgWidth = loadedImages[0].img.naturalWidth;
+              const totalHeightExceptLast = loadedImages
+                .slice(0, -1)
+                .reduce((sum, item) => sum + item.height, 0);
 
-            const finalUrl = canvas.toDataURL("image/png");
-            console.log("final url of images:", finalUrl);
-            chrome.runtime.sendMessage({ action: "OpenPage", finalUrl });
+              const lastImg = loadedImages[loadedImages.length - 1];
+              const lastTrimHeight = pageHeight - totalHeightExceptLast;
+
+              canvas.width = imgWidth;
+              canvas.height = totalHeightExceptLast + lastTrimHeight;
+
+              let yOffset = 0;
+              // Draw all except last
+              for (let i = 0; i < loadedImages.length - 1; i++) {
+                ctx.drawImage(loadedImages[i].img, 0, yOffset);
+                yOffset += loadedImages[i].height;
+              }
+
+              // Draw **bottom part of last image**
+              const trimTop = lastImg.height - lastTrimHeight; // how much to skip from top
+              ctx.drawImage(
+                lastImg.img,
+                0,
+                trimTop,
+                lastImg.img.naturalWidth,
+                lastTrimHeight, // source (skip top)
+                0,
+                yOffset,
+                lastImg.img.naturalWidth,
+                lastTrimHeight // destination
+              );
+
+              const finalUrl = canvas.toDataURL("image/png");
+              chrome.runtime.sendMessage({ action: "OpenPage", finalUrl });
+              console.log(
+                "✅ Finished merging screenshots (bottom-trim last image)"
+              );
+            };
+
+            stitchScreenshots();
           }
         };
 
@@ -166,9 +189,11 @@
           loadCount++;
         };
       });
+
       sendResponse({ status: "combined" });
       return true;
     }
+
     // ignore others
   });
 })();

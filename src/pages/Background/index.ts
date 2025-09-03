@@ -8,10 +8,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "beginCapture" && msg.tabId) {
     targetTabId = msg.tabId as number;
     isCapturing = true;
-    
-    // Reset previous data
-    screenshotUrls = [];
-    lastFinalUrl = null;
 
     startContentScriptAndBegin(targetTabId);
     sendResponse({ status: "beginRequested" });
@@ -57,25 +53,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
       );
-    }
-    return true;
-  } else if (msg.action === "OpenPage") {
-    console.log("final url:", msg.finalUrl);
-    
-    // Only store and open if we don't already have this URL stored
-    if (lastFinalUrl !== msg.finalUrl) {
-      lastFinalUrl = msg.finalUrl;
-      
-      // open the capture page
-      chrome.tabs.create({
-        url: chrome.runtime.getURL("Screenshot/capture.html"),
-      });
+      targetTabId = null;
+      screenshotUrls = [];
     }
 
-    // Reset capturing state and cleanup
-    targetTabId = null;
-    screenshotUrls = [];
-    isCapturing = false;
+    return true;
+  } else if (msg.action === "OpenPage") {
+    // store it at top-level
+    lastFinalUrl = msg.finalUrl;
+
+    // open the capture page
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("Screenshot/capture.html"),
+    });
 
     sendResponse({ status: "Page is Opened" });
     return true;
@@ -91,39 +81,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 /** Ensure the content script is present and send startCapturing to it. */
 function startContentScriptAndBegin(tabId: number) {
-  console.log("this is tab we are targeting:", tabId);
-  console.log(targetTabId);
+  // First try sending message
+  chrome.tabs.sendMessage(tabId, { action: "startCapturing" }, (res) => {
+    if (chrome.runtime.lastError) {
+      console.warn(
+        "[background] content script not found; injecting...",
+        chrome.runtime.lastError.message
+      );
 
-  
-  
-  // Inject content script first
-  chrome.scripting.executeScript(
-    { target: { tabId }, files: ["contentScript.bundle.js"] },
-    () => {
-      if (chrome.runtime.lastError) {
-        console.error(
-          "[background] Failed to inject content script:",
-          chrome.runtime.lastError.message
-        );
-        isCapturing = false;
-        targetTabId = null;
-      } else {
-        console.log(
-          "[background] Content script injected, waiting for ready..."
-        );
-        // Now wait for "contentReady" message (handled below)
-      }
+      // Inject and then try again
+      // chrome.scripting.executeScript(
+      //   { target: { tabId }, files: ["content-script.js"] },
+      //   () => {
+      //     // If injection fails for some reason, chrome.runtime.lastError would be set on the next sendMessage too
+      //     chrome.tabs.sendMessage(tabId, { action: "startCapturing" }, (res2) => {
+      //       if (chrome.runtime.lastError) {
+      //         console.error("[background] failed to start after injection:", chrome.runtime.lastError.message);
+      //         isCapturing = false;
+      //         targetTabId = null;
+      //       }
+      //     })
+      //   }
+      // )
     }
-  );
+  });
 }
-
-// Listen for "contentReady" from the content script
-chrome.runtime.onMessage.addListener((msg, sender) => {
-  if (msg.action === "contentReady" && sender.tab?.id === targetTabId) {
-    console.log("[background] Content script ready, starting capture...");
-    chrome.tabs.sendMessage(sender.tab.id, { action: "startCapturing" });
-  }
-});
 
 /** Capture the visible tab and forward screenshot back to content script as scrollNext.
  *  tabId here is guaranteed to be a number.
@@ -148,6 +130,8 @@ function captureVisibleAndSend(tabId: number): Promise<void> {
             return;
           }
           screenshotUrls.push(dataUrl);
+
+          // Optionally persist the screenshot
 
           // send message to the content script to perform the next scroll
           chrome.tabs.sendMessage(
@@ -179,5 +163,5 @@ function captureVisibleAndSend(tabId: number): Promise<void> {
     } catch (err) {
       reject(err);
     }
-  }); 
+  });
 }
