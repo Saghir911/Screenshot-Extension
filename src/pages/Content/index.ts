@@ -5,6 +5,28 @@
   let viewportHeight = window.innerHeight;
   let isCapturing = false;
   let lastCapturedScrollY: number | null = null; // remember last captured position
+  let maxScrolls = 0;
+  let scrollCount: number = 0;
+
+  // Checking the type of scroll
+  function checkScrollType(initialHeight: number, totalHeight: number) {
+    if (initialHeight < totalHeight) {
+      setScrollLimits("Infinite");
+      return "Infinite";
+    } else {
+      setScrollLimits("Fixed");
+      return "Fixed";
+    }
+  }
+  // Setting the limits if webpage has infinite scroll
+  function setScrollLimits(type: "Infinite" | "Fixed") {
+    if (type === "Infinite") {
+      maxScrolls = 3;
+    } else {
+      maxScrolls = Number.POSITIVE_INFINITY;
+    }
+    // scrollCount = 0;
+  }
 
   function clampScrollY(y: number) {
     const totalHeight = Math.max(
@@ -20,7 +42,6 @@
    * at this same visible position. This ensures the final partial viewport is captured once.
    */
   function scrollAndRequestCapture() {
-    if (!isCapturing) return;
 
     const totalHeight = Math.max(
       document.documentElement.scrollHeight,
@@ -41,7 +62,6 @@
     // Give page time to paint, lazy-load, reflow
     setTimeout(() => {
       if (!isCapturing) return;
-
       const currentScroll = window.scrollY;
       console.log(
         "[content] after scroll, window.scrollY =",
@@ -57,7 +77,7 @@
       ) {
         // Nothing new to capture -> finish
         isCapturing = false;
-        chrome.runtime.sendMessage({ action: "done" }, () => {});
+        chrome.runtime.sendMessage({ action: "CapturingComplete" });
 
         console.log(
           "✅ [content] Finished capturing full page (duplicate detected)"
@@ -67,7 +87,11 @@
 
       // Mark this position as captured and request capture
       lastCapturedScrollY = currentScroll;
-      chrome.runtime.sendMessage({ action: "capture" }, () => {});
+
+      const initialHeight = document.body.scrollHeight;
+      checkScrollType(initialHeight, totalHeight);
+
+      chrome.runtime.sendMessage({ action: "capture" });
     }, 800); // increase if the page needs more time to lazy-load
   }
 
@@ -87,10 +111,20 @@
     }
 
     if (msg.action === "scrollNext") {
+      console.log(msg.action);
       if (!isCapturing) {
         sendResponse({ status: "not-capturing" });
         return true;
       }
+
+      if (scrollCount >= maxScrolls) {
+        isCapturing = false;
+        chrome.runtime.sendMessage({ action: "CapturingComplete" });
+        sendResponse({status:"not-capturing"})
+        return;
+      }
+      scrollCount++;
+      console.log("no of scrolls:", scrollCount);
 
       // recompute based on the *current* visible position so we don't fight user's manual scroll
       viewportHeight = window.innerHeight;
@@ -106,13 +140,9 @@
       return true;
     }
 
-    if (msg.action === "stopCapturing") {
-      isCapturing = false;
-      sendResponse({ status: "stopped" });
-      return true;
-    }
     if (msg.action === "combine") {
       const images: string[] = msg.images;
+      console.log("images recieved",msg.images);
       if (!images || images.length === 0) return;
 
       const canvas = document.createElement("canvas");
@@ -135,52 +165,51 @@
 
           if (loadCount === images.length) {
             // Step-driven merge function
-            const stitchScreenshots = () => {
-              const pageHeight = Math.max(
-                document.documentElement.scrollHeight,
-                document.body.scrollHeight
-              );
 
-              const imgWidth = loadedImages[0].img.naturalWidth;
-              const totalHeightExceptLast = loadedImages
-                .slice(0, -1)
-                .reduce((sum, item) => sum + item.height, 0);
+            const pageHeight = Math.max(
+              document.documentElement.scrollHeight,
+              document.body.scrollHeight
+            );
 
-              const lastImg = loadedImages[loadedImages.length - 1];
-              const lastTrimHeight = pageHeight - totalHeightExceptLast;
+            const imgWidth = loadedImages[0].img.naturalWidth - 15;
+            const totalHeightExceptLast = loadedImages
+              .slice(0, -1)
+              .reduce((sum, item) => sum + item.height, 0);
 
-              canvas.width = imgWidth;
-              canvas.height = totalHeightExceptLast + lastTrimHeight;
+            const lastImg = loadedImages[loadedImages.length - 1];
+            const lastTrimHeight = pageHeight - totalHeightExceptLast;
 
-              let yOffset = 0;
-              // Draw all except last
-              for (let i = 0; i < loadedImages.length - 1; i++) {
-                ctx.drawImage(loadedImages[i].img, 0, yOffset);
-                yOffset += loadedImages[i].height;
-              }
+            canvas.width = imgWidth;
+            canvas.height = totalHeightExceptLast + lastTrimHeight;
 
-              // Draw **bottom part of last image**
-              const trimTop = lastImg.height - lastTrimHeight; // how much to skip from top
-              ctx.drawImage(
-                lastImg.img,
-                0,
-                trimTop,
-                lastImg.img.naturalWidth,
-                lastTrimHeight, // source (skip top)
-                0,
-                yOffset,
-                lastImg.img.naturalWidth,
-                lastTrimHeight // destination
-              );
+            let yOffset = 0;
+            // Draw all except last
+            for (let i = 0; i < loadedImages.length - 1; i++) {
+              ctx.drawImage(loadedImages[i].img, 0, yOffset);
+              yOffset += loadedImages[i].height;
+            }
 
-              const finalUrl = canvas.toDataURL("image/png");
-              chrome.runtime.sendMessage({ action: "OpenPage", finalUrl });
-              console.log(
-                "✅ Finished merging screenshots (bottom-trim last image)"
-              );
-            };
+            // Draw **bottom part of last image**
+            const trimTop = lastImg.height - lastTrimHeight; // how much to skip from top
+            console.log("trip top", trimTop);
+            ctx.drawImage(
+              lastImg.img,
+              0,
+              trimTop,
+              lastImg.img.naturalWidth - 15,
+              lastTrimHeight, // source (skip top)
+              0,
+              yOffset,
+              lastImg.img.naturalWidth - 15,
+              lastTrimHeight // destination
+            );
 
-            stitchScreenshots();
+            const finalUrl = canvas.toDataURL("image/png");
+            console.log("this is final link", finalUrl);
+            chrome.runtime.sendMessage({ action: "OpenPage", finalUrl });
+            console.log(
+              "✅ Finished merging screenshots (bottom-trim last image)"
+            );
           }
         };
 

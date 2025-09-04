@@ -34,7 +34,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // indicate async response
   }
 
-  if (msg.action === "done") {
+  if (msg.action === "CapturingComplete") {
     isCapturing = false;
 
     sendResponse({ status: "stopped", screenshots: screenshotUrls });
@@ -59,6 +59,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     return true;
   } else if (msg.action === "OpenPage") {
+    console.log("final link", msg.finalUrl);
     // store it at top-level
     lastFinalUrl = msg.finalUrl;
 
@@ -94,17 +95,26 @@ function startContentScriptAndBegin(tabId: number) {
         { target: { tabId }, files: ["contentScript.bundle.js"] },
         () => {
           // If injection fails for some reason, chrome.runtime.lastError would be set on the next sendMessage too
-          chrome.tabs.sendMessage(tabId, { action: "startCapturing" }, (res2) => {
-            if (chrome.runtime.lastError) {
-              console.error("[background] failed to start after injection:", chrome.runtime.lastError.message);
-              isCapturing = false;
-              targetTabId = null;
+          chrome.tabs.sendMessage(
+            tabId,
+            { action: "startCapturing" },
+            (res2) => {
+              if (chrome.runtime.lastError) {
+                console.error(
+                  "[background] failed to start after injection:",
+                  chrome.runtime.lastError.message
+                );
+                isCapturing = false;
+                targetTabId = null;
+              }
             }
-          })
+          );
+          return true
         }
-      )
+      );
     }
   });
+  
 }
 
 /** Capture the visible tab and forward screenshot back to content script as scrollNext.
@@ -147,7 +157,7 @@ function captureVisibleAndSend(tabId: number): Promise<void> {
                 isCapturing = false;
                 targetTabId = null;
                 reject(chrome.runtime.lastError);
-                return;
+                return
               }
 
               // If content script told us it's not capturing anymore, flip the flag
