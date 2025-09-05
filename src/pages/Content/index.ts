@@ -7,11 +7,13 @@
   let lastCapturedScrollY: number | null = null; // remember last captured position
   let maxScrolls = 0;
   let scrollCount: number = 0;
+  let scrollType: string = "";
 
   // Checking the type of scroll
   function checkScrollType(initialHeight: number, totalHeight: number) {
     if (initialHeight < totalHeight) {
       setScrollLimits("Infinite");
+
       return "Infinite";
     } else {
       setScrollLimits("Fixed");
@@ -21,8 +23,12 @@
   // Setting the limits if webpage has infinite scroll
   function setScrollLimits(type: "Infinite" | "Fixed") {
     if (type === "Infinite") {
-      maxScrolls = 3;
+      scrollType = type;
+      console.log("check scroll type:", scrollType);
+      maxScrolls = 10;
     } else {
+      scrollType = type;
+      console.log("check scroll type:", scrollType);
       maxScrolls = Number.POSITIVE_INFINITY;
     }
     // scrollCount = 0;
@@ -42,7 +48,6 @@
    * at this same visible position. This ensures the final partial viewport is captured once.
    */
   function scrollAndRequestCapture() {
-
     const totalHeight = Math.max(
       document.documentElement.scrollHeight,
       document.body.scrollHeight
@@ -120,7 +125,7 @@
       if (scrollCount >= maxScrolls) {
         isCapturing = false;
         chrome.runtime.sendMessage({ action: "CapturingComplete" });
-        sendResponse({status:"not-capturing"})
+        sendResponse({ status: "done" });
         return;
       }
       scrollCount++;
@@ -142,7 +147,7 @@
 
     if (msg.action === "combine") {
       const images: string[] = msg.images;
-      console.log("images recieved",msg.images);
+      console.log("images recieved", msg.images);
       if (!images || images.length === 0) return;
 
       const canvas = document.createElement("canvas");
@@ -180,7 +185,9 @@
             const lastTrimHeight = pageHeight - totalHeightExceptLast;
 
             canvas.width = imgWidth;
-            canvas.height = totalHeightExceptLast + lastTrimHeight;
+            scrollType === "Infinite"
+              ? (canvas.height = viewportHeight * maxScrolls)
+              : (canvas.height = totalHeightExceptLast + lastTrimHeight);
 
             let yOffset = 0;
             // Draw all except last
@@ -192,17 +199,27 @@
             // Draw **bottom part of last image**
             const trimTop = lastImg.height - lastTrimHeight; // how much to skip from top
             console.log("trip top", trimTop);
-            ctx.drawImage(
-              lastImg.img,
-              0,
-              trimTop,
-              lastImg.img.naturalWidth - 15,
-              lastTrimHeight, // source (skip top)
-              0,
-              yOffset,
-              lastImg.img.naturalWidth - 15,
-              lastTrimHeight // destination
-            );
+            if (scrollType === "Infinite") {
+              ctx.drawImage(
+                lastImg.img,
+                0,
+                yOffset,
+                lastImg.img.naturalWidth - 15,
+                viewportHeight + maxScrolls // destination
+              );
+            } else {
+              ctx.drawImage(
+                lastImg.img,
+                0,
+                trimTop,
+                lastImg.img.naturalWidth - 15,
+                lastTrimHeight, // source (skip top)
+                0,
+                yOffset,
+                lastImg.img.naturalWidth - 15,
+                lastTrimHeight // destination
+              );
+            }
 
             const finalUrl = canvas.toDataURL("image/png");
             console.log("this is final link", finalUrl);

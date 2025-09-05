@@ -39,7 +39,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     sendResponse({ status: "stopped", screenshots: screenshotUrls });
 
-    console.log("✅ [background] Done capturing. Screenshots:", screenshotUrls);
+    console.log("✅ [background] Done capturing. Screenshots:", screenshotUrls, targetTabId);
     if (targetTabId !== null) {
       chrome.tabs.sendMessage(
         targetTabId,
@@ -109,12 +109,11 @@ function startContentScriptAndBegin(tabId: number) {
               }
             }
           );
-          return true
+          return true;
         }
       );
     }
   });
-  
 }
 
 /** Capture the visible tab and forward screenshot back to content script as scrollNext.
@@ -157,7 +156,7 @@ function captureVisibleAndSend(tabId: number): Promise<void> {
                 isCapturing = false;
                 targetTabId = null;
                 reject(chrome.runtime.lastError);
-                return
+                return;
               }
 
               // If content script told us it's not capturing anymore, flip the flag
