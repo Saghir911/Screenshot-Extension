@@ -9,11 +9,58 @@
   let scrollCount: number = 0;
   let scrollType: string = "";
 
+  // function findHeaderElement(): HTMLElement | null {
+  //   const candidates = Array.from(document.querySelectorAll<HTMLElement>("*"));
+  //   for (const el of candidates) {
+  //     const style = window.getComputedStyle(el);
+  //     const isFixed = style.position === "sticky" || style.position === "fixed";
+  //     if (isFixed) {
+  //       return el;
+  //     }
+  //   }
+  //   return null;
+  // }
+
+  // const header = findHeaderElement();
+  // if (header) {
+  //   console.log("Detected header:", header);
+  //   header.style.position = "static";
+  //   header.style.display = "none";
+  //   header.style.background = "royalblue";
+  //   console.log("this is me");
+  // }
+
+  function removeHeadersFromYoutube() {
+    const headerContainer = document.querySelector(
+      "#masthead-container"
+    ) as HTMLElement | null;
+    const ironSelector = document.querySelector(
+      "iron-selector"
+    ) as HTMLElement | null;
+    const Wrapper = document.getElementById(
+      "frosted-glass"
+    ) as HTMLElement | null;
+
+    if (
+      window &&
+      window.location &&
+      window.location.hostname.includes("youtube.com")
+    ) {
+      console.log("Header Detected:", headerContainer);
+      // headerContainer.style.display = "none";
+      if (headerContainer) headerContainer.remove();
+      if (ironSelector) ironSelector.remove();
+      if (Wrapper) Wrapper.remove();
+    }
+  }
+
   // Checking the type of scroll
   function checkScrollType(initialHeight: number, totalHeight: number) {
+    if (window.location.hostname.includes("youtube.com")) {
+      removeHeadersFromYoutube();
+    }
     if (initialHeight < totalHeight) {
       setScrollLimits("Infinite");
-
       return "Infinite";
     } else {
       setScrollLimits("Fixed");
@@ -25,13 +72,12 @@
     if (type === "Infinite") {
       scrollType = type;
       console.log("check scroll type:", scrollType);
-      maxScrolls = 10;
+      maxScrolls = 3;
     } else {
       scrollType = type;
       console.log("check scroll type:", scrollType);
       maxScrolls = Number.POSITIVE_INFINITY;
     }
-    // scrollCount = 0;
   }
 
   function clampScrollY(y: number) {
@@ -107,6 +153,7 @@
       viewportHeight = window.innerHeight;
       scrollY = 0;
       lastCapturedScrollY = null;
+      scrollCount = 0;
 
       // immediately perform initial scroll+capture (scroll to top then capture)
       scrollAndRequestCapture();
@@ -222,7 +269,7 @@
             }
 
             const finalUrl = canvas.toDataURL("image/png");
-            console.log("this is final link", finalUrl);
+            // console.log("this is final link", finalUrl);
             chrome.runtime.sendMessage({ action: "OpenPage", finalUrl });
             console.log(
               "✅ Finished merging screenshots (bottom-trim last image)"

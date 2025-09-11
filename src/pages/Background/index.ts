@@ -59,7 +59,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     return true;
   } else if (msg.action === "OpenPage") {
-    console.log("final link", msg.finalUrl);
+    // console.log("final link", msg.finalUrl);
     // store it at top-level
     lastFinalUrl = msg.finalUrl;
 
