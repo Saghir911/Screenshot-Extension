@@ -30,28 +30,40 @@
   //   console.log("this is me");
   // }
 
-  function removeHeadersFromYoutube() {
-    const headerContainer = document.querySelector(
-      "#masthead-container"
-    ) as HTMLElement | null;
-    const ironSelector = document.querySelector(
-      "iron-selector"
-    ) as HTMLElement | null;
-    const Wrapper = document.getElementById(
-      "frosted-glass"
-    ) as HTMLElement | null;
+  let removedHeaders: {
+    el: HTMLElement;
+    parent: Node;
+    next: Node | null;
+  }[] = [];
 
-    if (
-      window &&
-      window.location &&
-      window.location.hostname.includes("youtube.com")
-    ) {
-      console.log("Header Detected:", headerContainer);
-      // headerContainer.style.display = "none";
-      if (headerContainer) headerContainer.remove();
-      if (ironSelector) ironSelector.remove();
-      if (Wrapper) Wrapper.remove();
-    }
+  function removeHeadersFromYoutube() {
+    const elements = [
+      document.querySelector("#masthead-container"),
+      document.querySelector("iron-selector"),
+      document.getElementById("frosted-glass"),
+    ];
+
+    elements.forEach((el: any) => {
+      if (el) {
+        removedHeaders.push({
+          el,
+          parent: el.parentNode!,
+          next: el.nextSibling,
+        });
+        el.remove();
+      }
+    });
+  }
+
+  function restoreHeaders() {
+    removedHeaders.forEach((item) => {
+      if (item.next) {
+        item.parent.insertBefore(item.el, item.next);
+      } else {
+        item.parent.appendChild(item.el);
+      }
+    });
+    removedHeaders = [];
   }
 
   // Checking the type of scroll
@@ -129,7 +141,7 @@
         // Nothing new to capture -> finish
         isCapturing = false;
         chrome.runtime.sendMessage({ action: "CapturingComplete" });
-
+        restoreHeaders();
         console.log(
           "✅ [content] Finished capturing full page (duplicate detected)"
         );
@@ -172,6 +184,7 @@
       if (scrollCount >= maxScrolls) {
         isCapturing = false;
         chrome.runtime.sendMessage({ action: "CapturingComplete" });
+        restoreHeaders();
         sendResponse({ status: "done" });
         return;
       }
