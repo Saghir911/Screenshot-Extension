@@ -8,12 +8,12 @@
   let maxScrolls = 0;
   let scrollCount: number = 0;
   let scrollType: string = "";
-  const youtubeSidebar = await waitForElement<HTMLElement>("#guide-wrapper");
-  const youtubeScroller = await waitForElement<HTMLElement>(
+
+  const youtubeSidebar = await waitForElement<HTMLElement>(
     "#guide-inner-content"
   );
 
-  console.log("sidebar:", youtubeSidebar, "scroller:", youtubeScroller);
+  console.log("sidebar:", youtubeSidebar);
 
   function waitForElement<T extends HTMLElement>(
     selector: string,
@@ -34,7 +34,12 @@
     });
   }
 
-  let removedHeaders: {
+  let removeYTHeaders: {
+    el: HTMLElement;
+    parent: Node;
+    next: Node | null;
+  }[] = [];
+  let removedYTSideBars: {
     el: HTMLElement;
     parent: Node;
     next: Node | null;
@@ -49,7 +54,7 @@
 
     elements.forEach((el: any) => {
       if (el) {
-        removedHeaders.push({
+        removeYTHeaders.push({
           el,
           parent: el.parentNode!,
           next: el.nextSibling,
@@ -60,18 +65,25 @@
   }
 
   function restoreHeaders() {
-    removedHeaders.forEach((item) => {
+    removeYTHeaders.forEach((item) => {
       if (item.next) {
         item.parent.insertBefore(item.el, item.next);
       } else {
         item.parent.appendChild(item.el);
       }
     });
-    removedHeaders = [];
+    removeYTHeaders = [];
   }
 
-  async function hideSidebar(scrollCount: number) {
-    if (youtubeSidebar && scrollCount === 2) {
+  function removedSidebarsFromYoutube() {}
+  async function hideAndScrollSidebar(scrollCount: number) {
+    if (scrollCount === 1) {
+      console.log("[content] scrollYoutubeSidebar for first scroll");
+      youtubeSidebar?.scrollBy({
+        top: youtubeSidebar.scrollHeight - youtubeSidebar.clientHeight,
+        behavior: "auto",
+      });
+    } else if (youtubeSidebar && scrollCount === 2) {
       try {
         youtubeSidebar.style.display = "none";
         console.log("[content] sidebar hidden");
@@ -82,6 +94,8 @@
   }
   function showSidebar() {
     if (youtubeSidebar) youtubeSidebar.style.display = "initial";
+    youtubeSidebar?.scrollTo({ top: 0, behavior: "auto" });
+    console.log("[content] sidebar scrolled to top");
   }
 
   /**
@@ -89,23 +103,6 @@
    * We DO NOT hide the sidebar here; hiding is handled in the scrollNext message handler
    * so hide happens *after* the first capture is completed by the background.
    */
-  async function scrollYoutubeSidebar(scrollCount: number) {
-    if (scrollCount === 1) {
-      console.log("[content] scrollYoutubeSidebar for first scroll");
-      youtubeScroller?.scrollBy({
-        top: youtubeScroller.scrollHeight - youtubeScroller.clientHeight,
-        behavior: "auto",
-      });
-      // console.log(
-      //   "Extraspace:",
-      //   youtubeScroller.scrollHeight - youtubeScroller.clientHeight,
-      //   "scrollHeight",
-      //   youtubeScroller.scrollHeight,
-      //   "clientHeight:",
-      //   youtubeScroller.clientHeight
-      // );
-    }
-  }
 
   // Checking the type of scroll (Infinite vs Fixed)
   function checkScrollType(initialHeight: number, totalHeight: number) {
@@ -166,8 +163,7 @@
     //  await hideSidebar()
     // }
     window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
-    await scrollYoutubeSidebar(noOfScrolls);
-    await hideSidebar(noOfScrolls);
+    await hideAndScrollSidebar(noOfScrolls);
 
     // REQUEST CAPTURE FROM BACKGROUND (we do not await a callback here because your background
     // will, after capturing, send us a scrollNext message to continue)
