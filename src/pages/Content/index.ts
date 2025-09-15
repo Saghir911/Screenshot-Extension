@@ -1,5 +1,5 @@
 // content-script.ts
-(() => {
+(async () => {
   console.log("[content] injected");
   let scrollY = 0;
   let viewportHeight = window.innerHeight;
@@ -8,27 +8,31 @@
   let maxScrolls = 0;
   let scrollCount: number = 0;
   let scrollType: string = "";
+  const youtubeSidebar = await waitForElement<HTMLElement>("#guide-wrapper");
+  const youtubeScroller = await waitForElement<HTMLElement>(
+    "#guide-inner-content"
+  );
 
-  // function findHeaderElement(): HTMLElement | null {
-  //   const candidates = Array.from(document.querySelectorAll<HTMLElement>("*"));
-  //   for (const el of candidates) {
-  //     const style = window.getComputedStyle(el);
-  //     const isFixed = style.position === "sticky" || style.position === "fixed";
-  //     if (isFixed) {
-  //       return el;
-  //     }
-  //   }
-  //   return null;
-  // }
+  console.log("sidebar:", youtubeSidebar, "scroller:", youtubeScroller);
 
-  // const header = findHeaderElement();
-  // if (header) {
-  //   console.log("Detected header:", header);
-  //   header.style.position = "static";
-  //   header.style.display = "none";
-  //   header.style.background = "royalblue";
-  //   console.log("this is me");
-  // }
+  function waitForElement<T extends HTMLElement>(
+    selector: string,
+    timeout = 5000
+  ): Promise<T | null> {
+    return new Promise((resolve) => {
+      const start = Date.now();
+
+      const check = () => {
+        const el = document.querySelector(selector) as T | null;
+        if (el) return resolve(el);
+
+        if (Date.now() - start > timeout) return resolve(null);
+        requestAnimationFrame(check);
+      };
+
+      check();
+    });
+  }
 
   let removedHeaders: {
     el: HTMLElement;
@@ -66,7 +70,44 @@
     removedHeaders = [];
   }
 
-  // Checking the type of scroll
+  async function hideSidebar(scrollCount: number) {
+    if (youtubeSidebar && scrollCount === 2) {
+      try {
+        youtubeSidebar.style.display = "none";
+        console.log("[content] sidebar hidden");
+      } catch (err) {
+        console.warn("[content] hideSidebar failed:", err);
+      }
+    }
+  }
+  function showSidebar() {
+    if (youtubeSidebar) youtubeSidebar.style.display = "initial";
+  }
+
+  /**
+   * Optional visual tweak: scroll the youtube inner scroller (does NOT hide sidebar).
+   * We DO NOT hide the sidebar here; hiding is handled in the scrollNext message handler
+   * so hide happens *after* the first capture is completed by the background.
+   */
+  async function scrollYoutubeSidebar(scrollCount: number) {
+    if (scrollCount === 1) {
+      console.log("[content] scrollYoutubeSidebar for first scroll");
+      youtubeScroller?.scrollBy({
+        top: youtubeScroller.scrollHeight - youtubeScroller.clientHeight,
+        behavior: "auto",
+      });
+      // console.log(
+      //   "Extraspace:",
+      //   youtubeScroller.scrollHeight - youtubeScroller.clientHeight,
+      //   "scrollHeight",
+      //   youtubeScroller.scrollHeight,
+      //   "clientHeight:",
+      //   youtubeScroller.clientHeight
+      // );
+    }
+  }
+
+  // Checking the type of scroll (Infinite vs Fixed)
   function checkScrollType(initialHeight: number, totalHeight: number) {
     if (window.location.hostname.includes("youtube.com")) {
       removeHeadersFromYoutube();
@@ -84,7 +125,7 @@
     if (type === "Infinite") {
       scrollType = type;
       console.log("check scroll type:", scrollType);
-      maxScrolls = 3;
+      maxScrolls = 5;
     } else {
       scrollType = type;
       console.log("check scroll type:", scrollType);
@@ -102,15 +143,16 @@
   }
 
   /**
-   * Scroll to `scrollY`, wait for paint, then request a capture unless we've already captured
-   * at this same visible position. This ensures the final partial viewport is captured once.
+   * Scroll to `scrollY`, wait for paint, then request a capture.
+   * This will request the background to capture the visible viewport.
    */
-  function scrollAndRequestCapture() {
+  async function scrollAndRequestCapture(noOfScrolls: number) {
     const totalHeight = Math.max(
       document.documentElement.scrollHeight,
       document.body.scrollHeight
     );
     const maxScroll = Math.max(0, totalHeight - viewportHeight);
+    console.log("viewportHeight", viewportHeight);
 
     console.log("[content] scrollAndRequestCapture", {
       requestedScrollY: scrollY,
@@ -120,11 +162,20 @@
     });
 
     // Always attempt to scroll to the target (even if target === maxScroll)
+    // if(scrollCount === 2){
+    //  await hideSidebar()
+    // }
     window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
+    await scrollYoutubeSidebar(noOfScrolls);
+    await hideSidebar(noOfScrolls);
+
+    // REQUEST CAPTURE FROM BACKGROUND (we do not await a callback here because your background
+    // will, after capturing, send us a scrollNext message to continue)
 
     // Give page time to paint, lazy-load, reflow
-    setTimeout(() => {
+    setTimeout(async () => {
       if (!isCapturing) return;
+      console.log("accurate scroll count:", noOfScrolls);
       const currentScroll = window.scrollY;
       console.log(
         "[content] after scroll, window.scrollY =",
@@ -142,6 +193,7 @@
         isCapturing = false;
         chrome.runtime.sendMessage({ action: "CapturingComplete" });
         restoreHeaders();
+        showSidebar();
         console.log(
           "✅ [content] Finished capturing full page (duplicate detected)"
         );
@@ -155,10 +207,12 @@
       checkScrollType(initialHeight, totalHeight);
 
       chrome.runtime.sendMessage({ action: "capture" });
-    }, 800); // increase if the page needs more time to lazy-load
+      console.log("[content] capture requested to background");
+    }, 800); // adjust if page lazy-loads slower or faster
   }
 
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
+    // Start capture sequence (initial top capture)
     if (msg.action === "startCapturing") {
       // initialize
       isCapturing = true;
@@ -168,14 +222,17 @@
       scrollCount = 0;
 
       // immediately perform initial scroll+capture (scroll to top then capture)
-      scrollAndRequestCapture();
+      scrollAndRequestCapture(scrollCount);
 
       sendResponse({ status: "started" });
       return true;
     }
 
+    // Background will send this after it captures visible tab (see your background.ts).
+    // When the content script receives the very first "scrollNext", hide the sidebar before
+    // performing the next scroll+capture so subsequent captures do not include the sidebar.
     if (msg.action === "scrollNext") {
-      console.log(msg.action);
+      console.log("[content] received scrollNext from background");
       if (!isCapturing) {
         sendResponse({ status: "not-capturing" });
         return true;
@@ -185,11 +242,13 @@
         isCapturing = false;
         chrome.runtime.sendMessage({ action: "CapturingComplete" });
         restoreHeaders();
+        showSidebar();
         sendResponse({ status: "done" });
         return;
       }
-      scrollCount++;
-      console.log("no of scrolls:", scrollCount);
+
+      // If this is the first scrollNext (meaning first capture finished), hide the sidebar
+      // before performing the next scroll+capture.
 
       // recompute based on the *current* visible position so we don't fight user's manual scroll
       viewportHeight = window.innerHeight;
@@ -198,16 +257,20 @@
       const nextTarget = clampScrollY(window.scrollY + viewportHeight);
       scrollY = nextTarget;
 
-      // always attempt to scroll to `scrollY` and request capture (the function will detect duplicates)
-      scrollAndRequestCapture();
+      // increment BEFORE calling scrollAndRequestCapture so the function receives correct index
+      console.log("before increment scrollCount:", scrollCount);
+      scrollCount++;
+      scrollAndRequestCapture(scrollCount);
+      console.log("no of scrolls:", scrollCount);
 
       sendResponse({ status: "scrolled", scrollY });
       return true;
     }
 
+    // Combine images handler (unchanged logic)
     if (msg.action === "combine") {
       const images: string[] = msg.images;
-      console.log("images recieved", msg.images);
+      console.log("images received", msg.images);
       if (!images || images.length === 0) return;
 
       const canvas = document.createElement("canvas");
@@ -258,7 +321,7 @@
 
             // Draw **bottom part of last image**
             const trimTop = lastImg.height - lastTrimHeight; // how much to skip from top
-            console.log("trip top", trimTop);
+            console.log("trim top", trimTop);
             if (scrollType === "Infinite") {
               ctx.drawImage(
                 lastImg.img,
@@ -282,7 +345,6 @@
             }
 
             const finalUrl = canvas.toDataURL("image/png");
-            // console.log("this is final link", finalUrl);
             chrome.runtime.sendMessage({ action: "OpenPage", finalUrl });
             console.log(
               "✅ Finished merging screenshots (bottom-trim last image)"
