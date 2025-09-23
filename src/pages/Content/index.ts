@@ -5,14 +5,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "beginCapture") {
     console.log("message received from Popup");
     sendResponse("done");
-    count++;
-    chrome.runtime.sendMessage({ action: "takeScreenshot", tries: count });
+    // count++
+    chrome.runtime.sendMessage({ action: "takeScreenshot" });
   }
   if (msg.action === "scrollNext") {
+    let oneviewPortHeight = window.innerHeight;
     console.log("I am scrolling okay");
     sendResponse({ status: "scroll done" });
-    chrome.runtime.sendMessage({ action: "takeScreenshot", tries: count });
-    count++;
+    // chrome.runtime.sendMessage({ action: "takeScreenshot", tries: count });
+    // count++;
+    window.scrollBy(0, oneviewPortHeight);
+    console.log("We Srolled about:", oneviewPortHeight, "px Height");
   }
   return true;
 });
