@@ -3,42 +3,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     console.log("message received from Content ", "message:", msg.action);
     sendResponse({ status: "takeScreenshot" });
 
-    new Promise<string>((resolve, reject) => {
-      chrome.tabs.captureVisibleTab(
-        chrome.windows.WINDOW_ID_CURRENT,
-        { format: "png" },
-        (dataUrl: string | undefined) => {
-          if (chrome.runtime.lastError) {
-            console.error("captureVisibleTab error:", chrome.runtime.lastError);
-            reject(chrome.runtime.lastError);
-            return;
-          }
-          if (!dataUrl) {
-            const err = new Error("No dataUrl returned from captureVisibleTab");
-            console.error(err.message);
-            reject(err);
-            return;
-          }
-          // You can do something with the screenshot dataUrl here, e.g., send it back to the content script or save it
-          console.log("Screenshot taken:", dataUrl.substring(0, 30) + "...");
-          resolve(dataUrl);
+    chrome.tabs.captureVisibleTab(
+      chrome.windows.WINDOW_ID_CURRENT,
+      { format: "png" },
+      (dataUrl: string | undefined) => {
+        if (chrome.runtime.lastError) {
+          console.error("captureVisibleTab error:", chrome.runtime.lastError);
+
+          return;
         }
-      );
-    })
-  
-    console.log("count:", msg.tries);
-    if (msg.tries <= 3) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const tab = tabs[0];
-        if (tab?.id) {
-          chrome.tabs.sendMessage(tab.id, { action: "scrollNext" });
-        } else {
-          console.error("No active tab found");
+        if (!dataUrl) {
+          const err = new Error("No dataUrl returned from captureVisibleTab");
+          console.error(err.message);
+
+          return;
         }
-      });
-    } else {
-      console.log("We are done now 🎉🎉🎉 because count is:", msg.tries);
-    }
+        // You can do something with the screenshot dataUrl here, e.g., send it back to the content script or save it
+        console.log("Screenshot taken:", dataUrl.substring(0, 30) + "...");
+      }
+    );
+
+    // console.log("count:", msg.tries);
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { action: "scrollNext" });
+      } else {
+        console.error("No active tab found");
+      }
+    });
+
+    console.log("We are done now 🎉🎉🎉");
   }
   return true;
 });
